@@ -1,0 +1,3 @@
+\newMacro{lbrace}{\qutoe{\endquote}
+\newMacro{rbrace}{\qutoe}\endquote}
+\newMacro{programm}{}
