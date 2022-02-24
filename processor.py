@@ -44,9 +44,13 @@ class Processor:
             'include': (0, 1, None, True),
             'input': (0, 1, None, True),
             'ignore': (0, 0, None, True),
-            'endignore': (0, 0, None, True)
+            'endignore': (0, 0, None, True),
+            'callpy': (0, 1, None, True),
+            'pyarg': (0, 0, None, True),
+            'endpyarg': (0, 0, None, True)
     }
-    def __init__(self, text, exTokens=None, ignorLineBreak=False, verbose=0):
+    def __init__(self, text, exTokens=None, ignorLineBreak=False, 
+                verbose=0, script=None):
         """Init processer."""
         if ord(text[-1]) == 0:
             self.text = text
@@ -58,6 +62,7 @@ class Processor:
         else:
             self.tokens = exTokens
         self.ignorLineBreak = ignorLineBreak
+        self.script = script
         self.n = 0
         self.macros = {k: v for k, v in Processor.globalMacros.items()}
         self.maxMacroLength = 0
@@ -291,6 +296,13 @@ class Processor:
         if name == 'input':
             self.input(macro, preargs, afterargs)
             return True
+        if name == 'callpy':
+            self.callpy(macro, preargs, afterargs)
+            return True
+        if name == 'pyarg':
+            raise ValueError('\\pyarg should call after the \\callpy')
+        if name == 'endpyarg':
+            raise ValueError('no \\pyarg to end!')
 
 # =================== builtin macro functions =======================
     def newMacro(self, macro, preargs, afterargs):
@@ -415,6 +427,27 @@ class Processor:
         _ = subprocessor.scan()
         res = subprocessor.result[:]
         macro.expandText = res
+
+    def callpy(self, macro, preargs, afterargs):
+        pyarg = ''
+        n = self.n
+        if self.text[n:n+6] == '\\pyarg':
+            n = n+6
+            for i in range(n, len(self.text), 1):
+                if self.text[i:i+9] == '\\endpyarg':
+                    pyarg = self.text[n:i]
+                    self.n = i + 9
+                    break
+            else:
+                raise ValueError("\\pyarg not end!")
+        else:
+            raise ValueError('need argument')
+        expanding = ''
+        funcname = afterargs[0].text
+        funcname = funcname.replace(' ', '')
+        func = getattr(self.script, funcname)
+        expanding = func(pyarg)
+        macro.expandText = expanding
 # ================= end builtin macro functions =============
 
     def updateMaxMacroLength(self, macroName):
