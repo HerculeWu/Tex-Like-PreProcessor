@@ -111,17 +111,18 @@ In summary, I recomand to only use ```\quote...\endquote``` to add ```\```, ```{
 ### ```\ignore text \endignore```
 Ignore the content in ```text```. Used for comment. It has same issue as in ```\quote..\endquote```.
 
-## blocked macros
-Blocked macros can not be called by user. Also you can not redefine them. They will help the processing. Currently only ```\quotation{hashCode}``` is a blocked macro. It helps the processor to deal with quotation in recursive expanding. The content between ```\quote...\endquote``` will be put in to a hash table, and expand first as ```\quotation{hashCode}```. At the end this macro calling will be replaced by the value of ```hasCode``` in the hash table.
 ### ```\callpy{functionname}\pyarg text \endpyarg```
 When you use ```TLPP.py``` in command line, you can use ```--script``` or ```-s``` option to load a python script. All functions in the script can be called via this macro. All functions can only take one argument with type of string, which will be given as ```text``` between ```\pyarg``` and ```\endpyarg```. The return value of the function is the replace text of this statement. **Note**: The return value can be an empty string, but can not be ```None```. The script valid for all files in your project.
+
+## blocked macros
+Blocked macros can not be called by user. Also you can not redefine them. They will help the processing. Currently only ```\quotation{hashCode}``` is a blocked macro. It helps the processor to deal with quotation in recursive expanding. The content between ```\quote...\endquote``` will be put in to a hash table, and expand first as ```\quotation{hashCode}```. At the end this macro calling will be replaced by the value of ```hasCode``` in the hash table.
 
 For the processor, the script will be loaded as a ```module``` object.
 
 ## TODO
 - add support for single line comment
 - add support for enviroment, like in latex
-- add support for processor variable and operation of it.
+- add support for processor variable and operation of it. (Done by ```\callpy```. But still need when I want rewrite the processor in other language.)
 - add more debug message
 - make a position map between output text and input text
 - more.....
