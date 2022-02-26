@@ -1,3 +1,0 @@
-\newMacro{lbrace}{\qutoe{\endquote}
-\newMacro{rbrace}{\qutoe}\endquote}
-\callPython{addtotable}\pythonArg a, b, c, d \endpythonArg

@@ -1,0 +1,7 @@
+\subroutine{swip}
+\inout{a,b\in\real}
+\aux{t\in\real}
+t = a
+a = b
+b = t
+\endsubroutine

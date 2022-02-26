@@ -1,0 +1,8 @@
+\newMacro{lbrace}{\qutoe{\endquote\dnl}
+\newMacro{rbrace}{\qutoe}\endquote\dnl}
+\newMacro{subroutine}{\callpy{startsubroutine}\pyarg#1\endpyarg\dnl}
+\newMacro{in}{\callpy{inputvar}\pyarg#1\endpyarg\dnl}
+\newMacro{out}{\callpy{outputvar}\pyarg#1\endpyarg\dnl}
+\newMacro{inout}{\callpy{inoutvar}\pyarg#1\endpyarg\dnl}
+\newMacro{aux}{\callpy{auxvar}\pyarg#1\endpyarg\dnl}
+\newMacro{endsubroutine}{\callpy{updateheader}\pyarg\endpyarg\callpy{endsubroutine}\pyarg\endpyarg\dnl}

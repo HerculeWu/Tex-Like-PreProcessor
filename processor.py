@@ -47,7 +47,8 @@ class Processor:
             'endignore': (0, 0, None, True),
             'callpy': (0, 1, None, True),
             'pyarg': (0, 0, None, True),
-            'endpyarg': (0, 0, None, True)
+            'endpyarg': (0, 0, None, True),
+            'dnl': (0, 0, None, True)
     }
     def __init__(self, text, exTokens=None, ignorLineBreak=False, 
                 verbose=0, script=None):
@@ -78,6 +79,7 @@ class Processor:
         self.nlhash = hash('\n')
         self.quotationTable = {}
         self.quotationTable[self.nlhash] = '\n'
+        self.exthashcode = []
 
     def scan(self):
         """Scan text and tokeniz text."""
@@ -303,6 +305,9 @@ class Processor:
             raise ValueError('\\pyarg should call after the \\callpy')
         if name == 'endpyarg':
             raise ValueError('no \\pyarg to end!')
+        if name == 'dnl':
+            self.dnl(macro, preargs, afterargs)
+            return True
 
 # =================== builtin macro functions =======================
     def newMacro(self, macro, preargs, afterargs):
@@ -428,6 +433,11 @@ class Processor:
         res = subprocessor.result[:]
         macro.expandText = res
 
+    def dnl(self, macro, preargs, afterargs):
+        if self.text[self.n] == '\n':
+            self.n += 1
+        macro.expandText = ''
+
     def callpy(self, macro, preargs, afterargs):
         pyarg = ''
         n = self.n
@@ -442,12 +452,32 @@ class Processor:
                 raise ValueError("\\pyarg not end!")
         else:
             raise ValueError('need argument')
-        expanding = ''
         funcname = afterargs[0].text
         funcname = funcname.replace(' ', '')
         func = getattr(self.script, funcname)
         expanding = func(pyarg)
-        macro.expandText = expanding
+        if isinstance(expanding, str):
+            macro.expandText = expanding
+        elif isinstance(expanding, tuple):
+            hashcode, expandText, ifplace = expanding
+            if hashcode in self.quotationTable.keys():
+                if hashcode not in self.exthashcode:
+                    raise ValueError(
+                        'hashcode ' + hashcode + 'already used!')
+            if hashcode not in self.exthashcode:
+                self.exthashcode.append(hashcode)
+                
+            self.quotationTable[hashcode] = expandText
+            if ifplace:
+                macro.cat = 'quote'
+                macro.expandText = '\\quotation{' + str(hashcode) + '}'
+            else:
+                macro.expandText = ''
+        else:
+            raise ValueError(
+                '\\pycal can only take function return '+
+                'a string or (hashcode(integer), string, Bool)')
+
 # ================= end builtin macro functions =============
 
     def updateMaxMacroLength(self, macroName):

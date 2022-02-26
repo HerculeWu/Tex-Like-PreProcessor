@@ -53,7 +53,7 @@ the processor will detect how many arguments there are (numbers must be in order
 \newMacro{add}{(#-1) + (#1)}
 {a*b}\add{c*d}
 ```
-The second line will expand as ```(a*b) + (c*d)```. The placeholder ```#0``` is for the macro name it self, without backslash. For example
+The second line will expand to ```(a*b) + (c*d)```. The placeholder ```#0``` is for the macro name it self, without backslash. For example
 ```
 \newMacro{operater}{#-1 #0 #1}
 a \operator b
@@ -67,6 +67,8 @@ Ignore the new line charactor ```\n``` in the input document. By default it will
 Add a new line character ```\n```. It can be used to make a line break, after ```\newLineCharOff```.
 ### ```\newLineCharOn```
 The line break in the input document will be considered after this macro.
+### ```\dnl```
+If the next character direct after (without any white space) ```\dnl``` is the new line character ```'\n'```, the macro will delete it. If it is other charactor, it will do nothing and will be expand to empty string.
 
 **Note:** for macro expanding, the line break will be considered by the currend situation.
 
@@ -84,7 +86,17 @@ As an 'escape' enviroment. All contents in ```text``` will directly output to th
 \newMacro{\foo}{b}
 \add{\bar}{\foo}
 ```
-The last line will first expand to ```\bar + \quote\foo\endquote``` then ```\bar``` will expand as a normal macro, but ```\quote\foo\endquote``` will be a quotation, so at the end you will have ```a + \foo``` as final result.
+The last line will first expand to ```\bar + \quote\foo\endquote``` then ```\bar``` will expand as a normal macro, but ```\quote\foo\endquote``` will be a quotation, so at the end you will have ```a + \foo``` as final result. The quotation enviroment can be used as a argument like group, for example
+```
+\newMacro{add}{#-1 + #1}
+\newMacro{\bar}{a}
+\newMacro{\foo}{b}
+\quote\bar\endquote\add\foo
+```
+The last line will expand to
+```
+\bar + b
+```
 
 The first ```\endquote``` after ```\quote``` will be used. For example
 ```
@@ -112,12 +124,13 @@ In summary, I recomand to only use ```\quote...\endquote``` to add ```\```, ```{
 Ignore the content in ```text```. Used for comment. It has same issue as in ```\quote..\endquote```.
 
 ### ```\callpy{functionname}\pyarg text \endpyarg```
-When you use ```TLPP.py``` in command line, you can use ```--script``` or ```-s``` option to load a python script. All functions in the script can be called via this macro. All functions can only take one argument with type of string, which will be given as ```text``` between ```\pyarg``` and ```\endpyarg```. The return value of the function is the replace text of this statement. **Note**: The return value can be an empty string, but can not be ```None```. The script valid for all files in your project.
+When you use ```TLPP.py``` in command line, you can use ```--script``` or ```-s``` option to load a python script. All functions in the script can be called via this macro. All functions can only take one argument with type of string, which will be given as ```text``` between ```\pyarg``` and ```\endpyarg```. The return value of the function can be a string, in this case the string is the replace text of this statement. Or it can be a tuple ```(int, str, Bool)```. The first element is a hash code. It will result add to a hash table and the second value is the value under this hash code. The 3rd element is if you want to put the text here(```True```), or you just want this function to change the value in the hash table(```False```). With this you can change your text according to macros which called after. If you do this way, the replace text behaviers like texts in quotation enviroment. 
+**Note**: The return value can be an empty string, but can not be ```None```. The script valid for all files in your project.
+
+For the processor, the script will be loaded as a ```module``` object.
 
 ## blocked macros
 Blocked macros can not be called by user. Also you can not redefine them. They will help the processing. Currently only ```\quotation{hashCode}``` is a blocked macro. It helps the processor to deal with quotation in recursive expanding. The content between ```\quote...\endquote``` will be put in to a hash table, and expand first as ```\quotation{hashCode}```. At the end this macro calling will be replaced by the value of ```hasCode``` in the hash table.
-
-For the processor, the script will be loaded as a ```module``` object.
 
 ## TODO
 - add support for single line comment
