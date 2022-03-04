@@ -1,8 +1,4 @@
 
-from email import header
-from os import name
-
-
 class Variable:
     def __init__(self, name, vartype, pars=None):
         self.name = name
@@ -94,8 +90,8 @@ class Subrouten:
                 header += 'INTENT(IN) :: '
                 for v in indecl[declheader]:
                     header += v + ', '
-            header = header[:-2]
-            header += '\n'
+                header = header[:-2]
+                header += '\n'
         if hasout:
             for declheader in outdecl.keys():
                 header += declheader
@@ -103,27 +99,27 @@ class Subrouten:
                 header += 'INTENT(OUT) :: '
                 for v in outdecl[declheader]:
                     header += v + ', '
-            header = header[:-2]
-            header += '\n'
+                header = header[:-2]
+                header += '\n'
         if hasinout:
             for declheader in inoutdecl.keys():
                 header += declheader
                 header += ','
                 header += 'INTENT(INOUT) :: '
+                # print(declheader)
                 for v in inoutdecl[declheader]:
                     header += v + ', '
-            header = header[:-2]
-            header += '\n'
+                header = header[:-2]
+                header += '\n'
         if hasaux:
             for declheader in auxdecl.keys():
                 header += declheader
                 header += ' :: '
                 for v in auxdecl[declheader]:
                     header += v + ', '
-            header = header[:-2]
-            header += '\n'
+                header = header[:-2]
+                header += '\n'
         return header
-
 
 
 class GlobalState:
@@ -133,6 +129,7 @@ class GlobalState:
         self.subroutines = []
         self.functions = []
         self.currentSubroutine = None
+        self.currentLoop = None
 
 state = GlobalState()
 """
@@ -141,17 +138,21 @@ state = GlobalState()
 """
 def getArg(arg):
     arg = arg.replace(' ', '')
+    arg = arg.replace('\n', '')
     arglist = arg.split(';')
     out = []
     for decl in arglist:
         vv = decl.split('\\in')
         names, vartype = vv[0], vv[1][1:]
+        if len(vartype) == 0:
+            vartype = 'integer'
         names = names.split(',')
         if vartype[0:6] != 'vector':
+            # print(vartype)
             for name in names:
                 out.append(Variable(name, vartype))
         else:
-            pars = vartype[8:-1].split(',')
+            pars = vartype[7:-1].split(',')
             vectype = pars[0]
             vecsize = pars[1]
             parameter = {
@@ -185,6 +186,7 @@ def startsubroutine(arg: str):
     state.insubroute = True
     arg = arg.strip()
     arg = arg.replace(' ', '_')
+    arg = arg.replace('\n', '')
     subrouineobj = Subrouten(arg)
     state.subroutines.append(
         subrouineobj
@@ -233,9 +235,44 @@ def updateheader(arg):
 def endsubroutine(arg):
     if not state.insubroute:
         raise ValueError("sub routine not defined")
+    name = state.currentSubroutine.name
     state.insubroute = False
     state.currentSubroutine = None
-    return '\nEND SUBROUTINE ' + state.currentSubroutine.name
+    return '\nEND SUBROUTINE ' + name
+
+def sequence(arg: str):
+    arg = arg.replace(' ', '')
+    arg = arg.replace('\n', '')
+    arglist = arg.split(',')
+    if len(arglist) < 3:
+        raise ValueError(
+            'Not enough information to create the sequence')
+    first, second, end = arglist[0], arglist[1], arglist[-1]
+    step = str(int(second) - int(first))
+    return first + ':' + end + ':' + step
+
+def until(arg):
+    out = 'DO\n'
+    out += 'IF ( ' + arg + ' ) THEN\n'
+    out += 'EXIT\n'
+    out += 'END IF\n'
+    return out
+
+def whiledo(arg):
+    out = 'DO '
+    out += 'WHILE ( ' + arg + ' )\n'
+    return out
+
+def fordo(arg: str):
+    arg = arg.replace(' ', '')
+    arg = arg.replace('\n', '')
+    arglist = arg.split(',')
+    itr, start, end = arglist[0], arglist[1], arglist[2]
+    step = '1'
+    if len(arglist) == 4:
+        step = arglist[3]
+    out = 'DO ' + itr + ' = ' + start + ',' + end + ',' + step
+    return out
 
 
 

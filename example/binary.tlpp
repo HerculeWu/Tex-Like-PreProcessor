@@ -1,7 +1,10 @@
-\subroutine{swip}
-\inout{a,b\in\real}
-\aux{t\in\real}
-t = a
-a = b
-b = t
+\subroutine{sum}
+\inout{s\in\real;v\in\vector{real,10}}
+\aux{i\in\integer}
+i = 1
+s = 0.0
+\until{i > 10}\do
+s = s + v(i)
+i = i + 1
+\enddo
 \endsubroutine

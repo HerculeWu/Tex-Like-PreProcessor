@@ -1,10 +1,18 @@
-SUBROUTINE swip(a, b)
+SUBROUTINE sum(s, v)
 IMPLICIT NONE
-REAL,INTENT(INOUT) :: a, b
-REAL :: t
+REAL,INTENT(INOUT) :: s
+REAL,DIMENSION(1:10),INTENT(INOUT) :: v
+INTEGER :: i
 
-t = a
-a = b
-b = t
+i = 1
+s = 0.0
+DO
+IF (i > 10) THEN
+EXIT
+END IF
 
-END SUBROUTINE swip
+s = s + v(i)
+i = i + 1
+END DO
+
+END SUBROUTINE sum

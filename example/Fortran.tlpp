@@ -1,8 +1,15 @@
 \newMacro{lbrace}{\qutoe{\endquote\dnl}
 \newMacro{rbrace}{\qutoe}\endquote\dnl}
 \newMacro{subroutine}{\callpy{startsubroutine}\pyarg#1\endpyarg\dnl}
-\newMacro{in}{\callpy{inputvar}\pyarg#1\endpyarg\dnl}
-\newMacro{out}{\callpy{outputvar}\pyarg#1\endpyarg\dnl}
-\newMacro{inout}{\callpy{inoutvar}\pyarg#1\endpyarg\dnl}
+\newMacro{invars}{\callpy{inputvar}\pyarg#1\endpyarg\dnl}
+\newMacro{outvars}{\callpy{outputvar}\pyarg#1\endpyarg\dnl}
+\newMacro{inoutvars}{\callpy{inoutvar}\pyarg#1\endpyarg\dnl}
 \newMacro{aux}{\callpy{auxvar}\pyarg#1\endpyarg\dnl}
 \newMacro{endsubroutine}{\callpy{updateheader}\pyarg\endpyarg\callpy{endsubroutine}\pyarg\endpyarg\dnl}
+\newMacro{until}{\callpy{until}\pyarg#1\endpyarg}
+\newMacro{while}{\callpy{whiledo}\pyarg#1\endpyarg}
+\newMacro{fordo}{\callpy{fordo}\pyarg#1\endpyarg}
+\newMacro{do}{}
+\newMacro{enddo}{END DO}
+\newMacro{if}{IF (#1) THEN}
+\newMacro{endif}{END IF}
