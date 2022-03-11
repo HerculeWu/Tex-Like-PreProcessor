@@ -1,555 +1,564 @@
 """
-3 cates.
+Top level cates.
 
 macroname, after backslash
 group, in {}
-space, whitespace ' ', while not considered as macro arguments
-others, all others
-textend, end for whole text
-quote, quotation
+hash, use hashtable
 """
-
 
 class Token:
     """Class for token."""
 
-    def __init__(self, text, cat, start, end):
+    def __init__(self, text, cat, start=-1, end=-1):
         """Set text and cataloge."""
         self.text = text
         self.cat = cat
         self.expandText = ''
         self.start = 0  # start position in document
         self.end = 0  # end position in document
+    
+    def __eq__(self, other):
+        return (self.text == other.text) and (self.cat == other.cat)
 
     def __str__(self):
         """Print."""
         return "Token('" + self.text + "', " + self.cat + ", " + self.expandText + ")"
+    
+    def copy(self):
+        nt = Token(None, None)
+        nt.text = str(self.text)
+        nt.cat = str(self.cat)
+        nt.expandText = str(self.expandText)
+        nt.start = self.start
+        nt.end = self.end
+        return nt
 
+class Macro:
+    """Class for macros."""
+
+    def __init__(self, name, body, nneg=-1, npos=-1):
+        self.name = name
+        self.nneg = nneg
+        self.npos = npos
+        self.body = body
+        if nneg < 0:
+            self.detect_nneg()
+        if npos < 0:
+            self.detect_npos()
+
+    def __eq__(self, other):
+        return self.name == other.name
+    
+    def __str__(self) -> str:
+        res = "Macro("
+        res += self.name+', '
+        res += self.body+')'
+        return res
+    
+    def detect_npos(self):
+        npos = 0
+        i = 1
+        if len(self.body) == 0:
+            self.npos = npos
+            return None
+        while True:
+            placer = '#{0:d}'.format(i)
+            if placer in self.body:
+                npos += 1
+                i += 1
+            else:
+                break
+        self.npos = npos
+    
+    def detect_nneg(self):
+        i = 1
+        nneg = 0
+        if len(self.body) == 0:
+            self.nneg = nneg
+            return None
+        while True:
+            placer = '#-{0:d}'.format(i)
+            if placer in self.body:
+                nneg += 1
+                i += 1
+            else:
+                break
+        self.nneg = nneg
+
+    def expand(self, negargs, posargs):
+        nneg, npos = len(negargs), len(posargs)
+        if (nneg == self.nneg) and (npos == self.npos):
+            res = self.body[:]
+            if len(res) == 0:
+                return True, res
+            placer = '#0'
+            if placer in res:
+                res = res.replace(placer, self.name)
+            for i in range(1, nneg+1):
+                placer = '#-{0:d}'.format(i)
+                res = res.replace(placer, negargs[i-1])
+            for i in range(1, npos+1):
+                placer = '#{0:d}'.format(i)
+                res = res.replace(placer, posargs[i-1])
+            return True, res
+        else:
+            return False, "not enough args"
 
 class Processor:
     """Class for processor."""
 
     globalMacros = {
-        # name : (number of args befor, number of args after,
-            #         body(None if builtin),
-            #         isbuiltin)
-            'newMacro': (0, 2, None, True),
-            'quote': (0, 0, None, True),
-            'endquote': (0, 0, None, True),
-            'quotation': (0, 1, None, True),
-            'nl': (0, 0, None, True),
-            'newLineCharOn': (0, 0, None, True),
-            'newLineCharOff': (0, 0, None, True),
-            'renewMacro': (0, 2, None, True),
-            'include': (0, 1, None, True),
-            'input': (0, 1, None, True),
-            'ignore': (0, 0, None, True),
-            'endignore': (0, 0, None, True),
-            'callpy': (0, 1, None, True),
-            'pyarg': (0, 0, None, True),
-            'endpyarg': (0, 0, None, True),
-            'dnl': (0, 0, None, True)
+        '@callpy': Macro('@callpy', '', npos=1),
+        '@endcallpy': Macro('@endcallpy', ''),
+        '@hash': Macro('@hash', '\\@hash{#1}', npos=1),
+        '@newMacro': Macro('@newMacro', '', nneg=0, npos=2),
     }
-    def __init__(self, text, exTokens=None, ignorLineBreak=False, 
-                verbose=0, script=None):
+    tokens = {
+        'letter':list('abcdefghijklmnopqrstuvwxyz'
+                    +'ABCDEFGHIJKLMNOPQRSTUVWXYZ@'),
+        'groupstart': ['{'],
+        'groupend': ['}'],
+        'leader': ['\\'],
+        'textend': [chr(0)],
+        'space' : [' ', '\t'],
+        'nl' : ['\n', '\r'],
+    }
+
+    def __init__(self, text, scripts=None, verbose=0):
         """Init processer."""
         if ord(text[-1]) == 0:
-            self.text = text
+            self.input = text
         else:
-            self.text = text + chr(0)
-        self.verbose = verbose
-        if exTokens is None:
-            self.tokens = []
-        else:
-            self.tokens = exTokens
-        self.ignorLineBreak = ignorLineBreak
-        self.script = script
+            self.input = text + chr(0)
+        self.text = str(self.input)
+        self._verbose = verbose
+        self.tokenList = []
+        self.scripts = scripts
         self.n = 0
         self.macros = {k: v for k, v in Processor.globalMacros.items()}
-        self.maxMacroLength = 0
+        self._maxMacroLength = 0
         for key in self.macros.keys():
-            self.updateMaxMacroLength(key)
-        self.preargsBuffer = []
-        self.afterargsBuffer = []
-        self.preargsChecked = False
-        self.lastMacroIndex = -1
-        self.preremoves = 0
-        self.afterremoves = 0
+            self._updateMaxMacroLength(key)
+        self._maxTokenLength = 1
+        self._updateTokenLength()
+        self._lastMacroIndex = -1
         self.result = ''
-        self.nlhash = hash('\n')
-        self.quotationTable = {}
-        self.quotationTable[self.nlhash] = '\n'
-        self.exthashcode = []
+        self.hashTable = {}
+        self.invalidArgCat=['textend', 'space', 'leader', 'nl']
 
-    def scan(self):
-        """Scan text and tokeniz text."""
-        # if the text has been expanded at least once
-        isexpand = False
-        lastmacro = None
-        isfinished = False
-        buffer = ''
-        while True:
-            if self.verbose == 1:
-                print('---- start ----')
-                print('text')
-                print(self.text)
-                print('n = '+str(self.n))
-                print('len of text = '+str(len(self.text)))
-                print('---- end ----')
-            shouldContinue = self.getNextToken(
-                ignoreLineBreak=self.ignorLineBreak)
-            if not shouldContinue:
-                # when detected the EOF, stop
-                break
-            if len(self.tokens) == 0:
-                # when start with new line
-                continue
-            lastToken = self.tokens[-1]
-            ntokens = len(self.tokens)
-            if self.lastMacroIndex == -1:
-                # start deal with a macro
-                if lastToken.cat == 'macroname':
-                    self.lastMacroIndex = ntokens - 1
-                    lastmacro = self.tokens[-1]
-                    isfinished = self.macroChecker(lastToken,
-                                                   self.lastMacroIndex)
-            else:
-                isfinished = self.macroChecker(lastmacro,
-                                               self.lastMacroIndex)
-            if isfinished:
-                hasExpand = self.expandMacro(
-                        lastmacro,
-                        self.preargsBuffer,
-                        self.afterargsBuffer)
-                if not isexpand:
-                    isexpand = hasExpand
-                # ++++ remove tokens, reset state ++++
-                self.lastMacroIndex = -1
-                isfinished = False
-                if self.afterremoves != 0:
-                    del self.tokens[-self.afterremoves:]
-                if self.preremoves != 0:
-                    del self.tokens[-self.preremoves-1:-1]
-                if len(self.tokens[-1].expandText) == 0:
-                    del self.tokens[-1]
-                    hasExpand = False
-                self.afterargsBuffer = []
-                self.preargsBuffer = []
-                self.preargsChecked = False
-                self.afterremoves = 0
-                self.preremoves = 0
-                # ++++ end remove tokens ++++
-                # ++++ expand recursive ++
-                if hasExpand:
-                    buffer = self.combiner(asout=False)
-                    self.tokens = []
-                    self.text = buffer + self.text[self.n:]
-                    self.n = 0
-                    isexpand = False
-                # ++++ end expand recursive ++++
-        # recombine to text
-        self.result = self.combiner(asout=True)
-        return isexpand
-
-    def combiner(self, asout=False):
-        """Combine tokens to text."""
-        buffer = ''
-        for token in self.tokens:
-            if token.cat == 'others':
-                buffer += token.text
-                continue
-            if token.cat == 'group':
-                buffer += token.text
-                continue
-            if token.cat == 'macroname':
-                buffer += token.expandText
-                continue
-            if token.cat == 'quote':
-                if asout:
-                    textHash = token.expandText[11:-1]
-                    textHash = int(textHash)
-                    buffer += self.quotationTable[textHash]
-                else:
-                    buffer += token.expandText
-                continue
-            if token.cat == 'space':
-                buffer += ' '
-                continue
-        return buffer
-
-    def macroChecker(self, macro, tokenIndex):
-        """
-        Check macro.
-
-        Return is finished or need more tokens.
-        Given how many tokens need to remove from
-        token list.
-        """
-        ntokens = len(self.tokens)
-        name = macro.text
-        nargb, narga, body, isbuiltin = self.macros[name]
-        # check args befor the macro call
-        if not self.preargsChecked:
-            if nargb != 0:
-                i, n = 1, 1
-                while n <= nargb:
-                    nn = tokenIndex - i
-                    if nn < 0:
-                        raise ValueError("'" + name +
-                                         "' did not get enough pre-args")
-                    if self.tokens[nn].cat == 'space':
-                        i += 1
-                        continue
-                    else:
-                        self.preargsBuffer.append(self.tokens[nn])
-                        n += 1
-                        i += 1
-                self.preremoves = i - 1
-            else:
-                self.preremoves = 0
-            self.preargsChecked = True
-        # check args after the macro call
-        if narga != 0:
-            i, n = 1, 1
-            while n <= narga:
-                nn = tokenIndex + i
-                if nn > ntokens - 1:
-                    # False for need to get more tokens
-                    return False
-                if self.tokens[nn].cat == 'space':
-                    i += 1
-                    continue
-                elif self.tokens[nn].cat == 'textend':
-                    raise ValueError("'" + name +
-                                     "' did not get enough after-args")
-                else:
-                    if n > len(self.afterargsBuffer):
-                        self.afterargsBuffer.append(self.tokens[nn])
-                    i += 1
-                    n += 1
-            self.afterremoves = i - 1
-            return True
-        else:
-            self.afterremoves = 0
-            return True
-
-    def expandMacro(self, macro, preargs, afterargs):
-        """
-        Expand single macro.
-
-        Return if text has changed and add expanding text to token.
-        """
-        macroname = macro.text
-        nargb, narga, body, isbuiltin = self.macros[macroname]
-        if not isbuiltin:
-            res = body[:]
-            res = res.replace('#0', macroname)
-            if nargb != 0:
-                for i, barg in enumerate(preargs):
-                    placer = "#-{0:d}".format(i+1)
-                    res = res.replace(placer, barg.text)
-            if narga != 0:
-                for i, aarg in enumerate(afterargs):
-                    placer = "#{0:d}".format(i+1)
-                    res = res.replace(placer, aarg.text)
-            macro.expandText = res[:]
-            # True for expanded, false for not. Help for recursive expanding
-            return True
-        if isbuiltin:
-            isexpand = self.buildinMacro(macro, preargs, afterargs)
-            return isexpand
-
-    def buildinMacro(self, macro, preargs, afterargs):
-        """Call function for builtin macros."""
-        name = macro.text
-        if name == 'newMacro':
-            self.newMacro(macro, preargs, afterargs)
-            return True
-        if name == 'renewMacro':
-            self.renewMacro(macro, preargs, afterargs)
-            return True
-        if name == 'quotation':
-            self.quotation(macro, preargs, afterargs)
-            return False
-        if name == 'quote':
-            self.quote(macro, preargs, afterargs)
-            return True
-        if name == 'endquote':
-            self.endquote(macro, preargs, afterargs)
-            return True
-        if name == 'ignore':
-            self.ignore(macro, preargs, afterargs)
-            return True
-        if name == 'endignore':
-            self.endignore(macro, preargs, afterargs)
-            return True
-        if name == 'nl':
-            self.linebreak(macro, preargs, afterargs)
-            return False
-        if name == 'newLineCharOn':
-            self.newLineCharOn(macro, preargs, afterargs)
-            return True
-        if name == 'newLineCharOff':
-            self.newLineCharOff(macro, preargs, afterargs)
-            return True
-        if name == 'include':
-            self.include(macro, preargs, afterargs)
-            return True
-        if name == 'input':
-            self.input(macro, preargs, afterargs)
-            return True
-        if name == 'callpy':
-            self.callpy(macro, preargs, afterargs)
-            return True
-        if name == 'pyarg':
-            raise ValueError('\\pyarg should call after the \\callpy')
-        if name == 'endpyarg':
-            raise ValueError('no \\pyarg to end!')
-        if name == 'dnl':
-            self.dnl(macro, preargs, afterargs)
-            return True
-
-# =================== builtin macro functions =======================
-    def newMacro(self, macro, preargs, afterargs):
-        """Define new macro."""
-        name, body = afterargs[0].text, afterargs[1].text
-        if name[0] == '\\':
-            name = name[1:]
-        if name in self.macros.keys():
-            raise ValueError("macro '" + name + "' already defined.")
-        if (('\\' in name) or
-            (' ' in name) or ('{' in name) or
-            ('}' in name) or ('\n' in name)):
-            raise ValueError("macro name can not contain '\', ' ', '{' and '}'")
-        macro.expandText = ''
-        npargs, naargs = 0, 0
-        # detect number of args
-        i = 1
-        while True:
-            pplacer = "#-{0:d}".format(i)
-            i += 1
-            if pplacer in body:
-                npargs += 1
-            else:
-                break
-        i = 1
-        while True:
-            aplacer = "#{0:d}".format(i)
-            i += 1
-            if aplacer in body:
-                naargs += 1
-            else:
-                break
-        self.macros[name] = (npargs, naargs, body, False)
-        self.updateMaxMacroLength(name)
-
-    def renewMacro(self, macro, preargs, afterargs):
-        """Redefine a macro."""
-        name = afterargs[0].text
-        if name[0] == '\\':
-            name = name[1:]
-        if name not in self.macros.keys():
-            raise ValueError("macro '" + name + "' not defined.")
-        if self.macros[name][-1]:
-            raise ValueError("can not redefine builtin macros.")
-        del self.macros[name]
-        self.newMacro(macro, preargs, afterargs)
-
-    def quotation(self, macro, preargs, afterargs):
-        """Internal quotetion."""
-        body = afterargs[0]
-        try:
-            bodyhash = int(body.text)
-        except ValueError:
-            raise ValueError("\\quotation macro can not be used!")
-        if bodyhash not in self.quotationTable.keys():
-            raise ValueError("\\quotation macro can not be used!")
-        macro.expandText = '\\quotation{' + body.text + '}'
-        macro.cat = 'quote'
-    
-    def quote(self, macro, preargs, afterargs):
-        """Start quotation."""
-        n = self.n
-        buffer = ''
-        for i in range(n, len(self.text), 1):
-            if self.text[i:i+9] == '\\endquote':
-                buffer = self.text[n:i]
-                break
-        else:
-            raise ValueError("\\quote not end!")
-        bhash = hash(buffer)
-        self.quotationTable[bhash] = buffer
-        self.n = i+9
-        macro.cat = 'quote'
-        macro.expandText = '\\quotation{' + str(bhash) + '}'
-    
-    def endquote(self, macro, preargs, afterargs):
-        raise ValueError("no \\quote to end!")
-
-    def ignore(self,macro, preargs, afterargs):
-        """Start ignore."""
-        n = self.n
-        for i in range(n, len(self.text), 1):
-            if self.text[i:i+10] == '\\endignore':
-                break
-        else:
-            raise ValueError("\\ignore not end!")
-        self.n = i+10
-        macro.expandText = ''
-    
-    def endignore(self, macro, preargs, afterargs):
-        raise ValueError("no \\ignore to end!")
-
-    def linebreak(self, macro, preargs, afterargs):
-        """Line breaker."""
-        macro.cat = 'quote'
-        macro.text = '\n'
-        macro.expandText = '\\quotation{' + '\n' + '}'
-
-    def newLineCharOn(self, macro, preargs, afterargs):
-        """Enable new line charactor."""
-        self.ignorLineBreak = False
-        macro.expandText = ''
-
-    def newLineCharOff(self, macro, preargs, afterargs):
-        """Disable new line charactor."""
-        self.ignorLineBreak = True
-        macro.expandText = ''
-    
-    def include(self, macro, preargs, afterargs):
-        """Include other file."""
-        file = open(afterargs[0].text, 'r')
-        fileText = file.read()
-        file.close()
-        macro.expandText = fileText
-    
-    def input(self, macro, preargs, afterargs):
-        """Input other file."""
-        file = open(afterargs[0].text, 'r')
-        fileText = file.read()
-        file.close()
-        subprocessor = Processor(fileText)
-        _ = subprocessor.scan()
-        res = subprocessor.result[:]
-        macro.expandText = res
-
-    def dnl(self, macro, preargs, afterargs):
-        if self.text[self.n] == '\n':
-            self.n += 1
-        macro.expandText = ''
-
-    def callpy(self, macro, preargs, afterargs):
-        pyarg = ''
-        n = self.n
-        if self.text[n:n+6] == '\\pyarg':
-            n = n+6
-            for i in range(n, len(self.text), 1):
-                if self.text[i:i+9] == '\\endpyarg':
-                    pyarg = self.text[n:i]
-                    self.n = i + 9
-                    break
-            else:
-                raise ValueError("\\pyarg not end!")
-        else:
-            raise ValueError('need argument')
-        funcname = afterargs[0].text
-        funcname = funcname.replace(' ', '')
-        func = getattr(self.script, funcname)
-        expanding = func(pyarg)
-        if isinstance(expanding, str):
-            macro.expandText = expanding
-        elif isinstance(expanding, tuple):
-            hashcode, expandText, ifplace = expanding
-            if hashcode in self.quotationTable.keys():
-                if hashcode not in self.exthashcode:
-                    raise ValueError(
-                        'hashcode ' + hashcode + 'already used!')
-            if hashcode not in self.exthashcode:
-                self.exthashcode.append(hashcode)
-                
-            self.quotationTable[hashcode] = expandText
-            if ifplace:
-                macro.cat = 'quote'
-                macro.expandText = '\\quotation{' + str(hashcode) + '}'
-            else:
-                macro.expandText = ''
-        else:
-            raise ValueError(
-                '\\pycal can only take function return '+
-                'a string or (hashcode(integer), string, Bool)')
-
-# ================= end builtin macro functions =============
-
-    def updateMaxMacroLength(self, macroName):
+    def _updateMaxMacroLength(self, macroName):
         """Update when new macro defined."""
         nl = len(macroName)
-        if nl > self.maxMacroLength:
-            self.maxMacroLength = nl
+        if nl > self._maxMacroLength:
+            self._maxTokenLength = nl
+    
+    def _updateTokenLength(self):
+        self._maxTokenLength = 1
+        for key in Processor.tokens.keys():
+            for t in Processor.tokens[key]:
+                nl = len(t)
+                if nl > self._maxTokenLength:
+                    self._maxTokenLength = nl
+    
+    def process(self):
+        macro = None
+        nneg, npos = -1, -1
+        negstart, posend = -1, -1
+        negargs, posargs = [], []
+        while True:
+            if self._verbose == 1:
+                print('=========')
+                print(self.text)
+                print('++++++')
+                print(self.hashTable)
+                print(self._lastMacroIndex)
+            if self._lastMacroIndex > -1:
+                success, finished, message, posend = self._checkpos(macro.name, npos)
+                if not success:
+                    raise ValueError(message)
+                if not finished:
+                    shouldContinue = self._scaner()
+                    if not shouldContinue:
+                        raise ValueError('macro \\'+macro.name+' need '+str(npos)+' positive arguments')
+                    continue
+                negargs, posargs = self._macroStack(negstart, posend)
+                # if macro.name == '@newMacro':
+                #     print('negargs ', negargs)
+                #     print('posargs', posargs)
+                #     exit(0)
+                success, ntoken = self.macroExpander(
+                    macro, 
+                    self.tokenList[self._lastMacroIndex], 
+                    negargs, posargs)
+                if not success:
+                    raise ValueError(ntoken.expandText)
+                del self.tokenList[negstart:posend+1]
+                if len(ntoken.expandText) > 0:
+                    self.tokenList.append(ntoken)
+                buffer = self.combiner()
+                if buffer != self.text[:self.n]:
+                    self.text = buffer + self.text[self.n:]
+                    self.tokenList = []
+                    self.n = 0
+                self._lastMacroIndex = -1
+                npos, nneg = -1, -1
+                negstart, posend = -1, -1
+                negargs, posargs = [], []
+                macro = None
+                continue
+            shouldContinue = self._scaner()
+            if not shouldContinue:
+                break
+            lastToken = self.tokenList[-1]
+            if lastToken.cat == 'macroname':
+                # print(lastToken)
+                self._lastMacroIndex = len(self.tokenList)-1
+                # print(self._lastMacroIndex)
+                macro = self.macros[lastToken.text]
+                nneg, npos = macro.nneg, macro.npos
+                success, message, negstart = self._checkneg(macro.name, nneg)
+                if not success:
+                    raise ValueError(message)
+                continue
+        self.result = self.combiner(asout=True)
+                
+    def _checkneg(self, name, nneg):
+        if nneg == 0:
+            return True, None, self._lastMacroIndex
+        if nneg > len(self.tokenList)-1:
+            return False, 'macro \\'+name+' need '+str(nneg)+' negative arguments', -1
+        i = 1
+        canuse, index = 0, 0
+        while canuse < nneg:
+            if i > self._lastMacroIndex:
+                break
+            index = self._lastMacroIndex-i
+            if self.tokenList[index].cat not in self.invalidArgCat:
+                canuse += 1
+            i += 1
+        if canuse == nneg:
+            return True, None, index
+        else:
+            return False, 'macro \\'+name+' need '+str(nneg)+' negative arguments', -1
+    
+    def _checkpos(self, name, npos):
+        if npos == 0:
+            return True, True, None, self._lastMacroIndex
+        nafter = len(self.tokenList)-1-self._lastMacroIndex
+        if (nafter < npos) and (self.tokenList[-1].cat == 'textend'):
+            return False, False, 'macro \\'+name+' need '+str(npos)+' positive arguments', -1
+        i = 1
+        canuse, index = 0, 0
+        while canuse < npos:
+            index = self._lastMacroIndex+i
+            if index > len(self.tokenList)-1:
+                break
+            if self.tokenList[index].cat not in self.invalidArgCat:
+                canuse += 1
+            i += 1
+        if canuse != npos:
+            if self.tokenList[-1].cat == 'textend':
+                return False, False, 'macro \\'+name+' need '+str(npos)+' positive arguments', -1
+            return True, False, None, -1
+        return True, True, None, index
 
-    def getNextToken(self, ignoreLineBreak=True):
-        """Get next token."""
-        n = self.n
-        c = self.text[n]
-        if c == '\\':
-            # for macro
-            n = n + 1
-            buffer = ''
-            for i in range(self.maxMacroLength, 0, -1):
-                buffer = self.text[n:n+i]
-                if buffer in self.macros.keys():
-                    self.tokens.append(Token(buffer, 'macroname', self.n, n+i))
-                    self.n = n + i
-                    break
+    def _macroStack(self, negstart, posend):
+        negargs = list()
+        posargs = list()
+        if negstart == posend:
+            return negargs, posargs
+        i = 1
+        index = self._lastMacroIndex
+        while index > negstart:
+            index = self._lastMacroIndex-i
+            if self.tokenList[index].cat not in self.invalidArgCat:
+                negargs.append(self.tokenList[index].text)
+            i += 1
+        i = 1
+        index = self._lastMacroIndex
+        while index < posend:
+            index = self._lastMacroIndex+i
+            if self.tokenList[index].cat not in self.invalidArgCat:
+                posargs.append(self.tokenList[index].text)
+            i += 1
+        return negargs, posargs
+
+    def combiner(self, asout=False):
+        res = ''
+        for t in self.tokenList:
+            if t.cat == 'macroname':
+                res += t.expandText
+                continue
+            if t.cat == 'hash':
+                if not asout:
+                    res += t.expandText
+                else:
+                    hashcode = int(t.expandText[7:-1])
+                    res += self.hashTable[hashcode]
+                continue
+            if t.cat == 'textend':
+                if not asout:
+                    res += chr(0)
+                break
+            res += t.text
+        return res
+
+    def macroExpander(self, macro, token, negargs, posargs):
+        macroname = macro.name
+        ntoken = token.copy()
+        needint, success, res = self.intInterprater(macroname, ntoken, negargs, posargs)
+        if needint:
+            ntoken.expandText = res
+            return success, ntoken
+        success, res = macro.expand(negargs, posargs)
+        ntoken.expandText = res
+        return success, ntoken
+
+    def callpy(self, funcname, arg):
+        func = None
+        interactive = False
+        # print('funcname', funcname)
+        if funcname[0] == '@':
+            interactive = True
+            funcname = funcname[1:]
+        # print('funcname', funcname)
+        for key in self.scripts.keys():
+            try:
+                func = getattr(self.scripts[key], funcname)
+                break
+            except AttributeError:
+                continue
+        if func is None:
+            return False, None
+        try:
+            if interactive:
+                expanding = func(self, arg)
             else:
-                raise ValueError("'" + self.text[n:n+self.maxMacroLength] + "' is undefined")
-            return True
-        if c == '{':
-            # for group
-            level = 1
-            buffer = ''
-            while True:
-                n = n + 1
-                try:
-                    cc = self.text[n]
-                except IndexError:
-                    raise ValueError("'{' not closed")
-                if cc == '}':
-                    level -= 1
-                if cc == '{':
-                    level += 1
-                buffer += cc
-                if level == 0:
-                    buffer = buffer[:-1]
-                    self.tokens.append(Token(buffer, 'group', self.n, n+1))
-                    self.n = n + 1
-                    break
-            return True
-        if ord(c) == 0:
-            # for end of the whole document
-            self.tokens.append(Token(c, 'textend', self.n, self.n))
+                expanding = func(arg)
+        except Exception as e:
+            return False, str(e)
+        if expanding is None:
+            return True, ''
+        else:
+            return True, expanding
+    
+    def addMacro(self, macroname, body, nneg=-1, npos=-1):
+        if macroname[0] == '\\':
+            macroname = macroname[1:]
+        if macroname in self.macros.keys():
+            return False, 'Macro \\' + macroname + 'already defined'
+        for c in macroname:
+            if c not in Processor.tokens['letter']:
+                return False, "invalid character '"+c+"' in macro name"
+        self.macros[macroname] = Macro(macroname, body, nneg=nneg, npos=npos)
+        self._updateMaxMacroLength(macroname)
+        return True, ''
+
+    def removeMacro(self, macroname):
+        if '@' in macroname:
+            return False, "Macro \\"+macroname+" can not be removed"
+        if macroname not in self.macros.keys():
+            return False, "Macro \\"+macroname+" not defined"
+        del self.macros[macroname]
+        return True, None
+
+    def _scaner(self):
+        shouldContinue, ntoken, nn = self.getNextToken()
+        if not shouldContinue:
             return False
-        if c == ' ':
-            # for space
-            self.n += 1
-            self.tokens.append(Token(c, 'space', self.n, self.n))
-            return True
-        if c == '\n':
-            if ignoreLineBreak:
-                self.n += 1
+        if ntoken.cat == 'leader':
+            success, macroname, nn = self.stackWhileCat('letter')
+            if success:
+                if macroname not in self.macros.keys():
+                    raise ValueError('macro \\' + macroname + ' not defined!')
+                del self.tokenList[-1]
+                self.n = nn
+                ntoken = Token(macroname, 'macroname')
+                self.tokenList.append(ntoken)
                 return True
             else:
-                nltoken = Token('quotation', 'quote', self.n, self.n)
-                nltoken.expandText = '\\quotation{' + str(self.nlhash) + '}'
-                self.tokens.append(nltoken)
-                self.n += 1
-                return True
-        # for any others
-        self.tokens.append(Token(c, 'others', self.n, self.n))
-        self.n += 1
+                raise ValueError('can not get macro name')
+        if ntoken.cat == 'groupstart':
+            success, groupedText, nn = self.stackUntilLevelByCat()
+            if not success:
+                raise ValueError('group not ended')
+            del self.tokenList[-1]
+            ntoken = Token(groupedText, 'group')
+            self.tokenList.append(ntoken)
+            self.n = nn
+            return True
         return True
+
+    def intInterprater(self, macroname, token, negargs, posargs):
+        if macroname == '@callpy':
+            success, arg, nn = self.stackUntilText('\\@endcallpy')
+            if not success:
+                return True, False, '\\@callpy should end with \\@endcallpy'
+            self.n = nn
+            funcname = posargs[0]
+            success, expanding = self.callpy(funcname, arg)
+            if not success:
+                if expanding is None:
+                    return True, False, "can not call function '"+funcname+"'"
+                return True, False, "error message from script: "+expanding
+            if isinstance(expanding, str):
+                return True, True, expanding
+            if isinstance(expanding, tuple):
+                hashcode, variable, place = expanding
+                if ((not isinstance(hashcode, int)) or 
+                    ((not isinstance(variable, str)) 
+                    and (variable is not None)) or
+                    (not isinstance(place, bool))):
+                    return True, False, 'function should return a str or tuple[int, str, bool]'
+                if hashcode in self.hashTable.keys():
+                    return True, False, 'hash code '+str(hashcode)+' is protected'
+                if hashcode not in self.hashTable.keys():
+                    self.hashTable[hashcode] = variable
+                res = variable
+                if not place:
+                    res = '\\@hash{'+str(hashcode)+"}"
+                return True, True, res
+        elif macroname == '@endcallpy':
+            return True, False, '\\@endcallpy should use with \\@callpy'
+        elif macroname == '@hash':
+            try:
+                hashcode = int(posargs[0])
+            except:
+                return True, False, "\\@hash should take integer number as argument"
+            if ((hashcode in self.hashTable.keys()) or
+                (hashcode in self.hashTable.keys())):
+                token.cat = 'hash'
+                res = '\\@hash{' + posargs[0] + '}'
+                return True, True, res
+            else:
+                return True, False, 'hash code '+posargs[0]+' not in table'
+        elif macroname == '@newMacro':
+            name, body = str(posargs[0]), str(posargs[1])
+            success, res = self.addMacro(name, body)
+            return True, success, res
+        else:
+            return False, None, None
+
+    def getNextToken(self, n=-1, changeState=True):
+        if n < 0:
+            n = self.n
+        tl = self._maxTokenLength
+        while tl > 0:
+            c = self.text[n:n+tl]
+            for key in Processor.tokens.keys():
+                if c in Processor.tokens[key]:
+                    if key == 'textend':
+                        return False, Token(c, key), len(self.text)-1
+                    ntoken = Token(c, key)
+                    n += tl
+                    if changeState:
+                        self.tokenList.append(ntoken)
+                        self.n = n
+                    return True, ntoken, n
+            tl -= 1
+        c = self.text[n]
+        ntoken = Token(c, 'others')
+        if changeState:
+            self.tokenList.append(ntoken)
+            self.n = n+1
+        return True, ntoken, n+1
+
+    def stackUntilCat(self, tokencat, n=-1):
+        """
+        Stack text until arrive a given catalogue of token.
+
+        Parameters:
+        tokencat: string, catalogue of token to stop.
+        n: int, optional, start position in self.text. 
+            If negative, use self.n
+        Return:
+        string, stacked text.
+        """
+        if n < 0:
+            n = self.n
+        res = ''
+        while True:
+            shouldContinue, token, n = self.getNextToken(n=n, changeState=False)
+            if not shouldContinue:
+                return False, res, n-1
+            if token.cat == tokencat:
+                return True, res, n-1
+            res += token.text
+
+    def stackWhileCat(self, tokencat, n=-1):
+        """
+        Stack text while a given catalogue of token.
+
+        Parameters:
+        tokencat: string, catalogue of token to continue.
+        n: int, optional, start position in self.text. 
+            If negative, use self.n
+        Return:
+        string, stacked text.
+        """
+        if n < 0:
+            n = self.n
+        res = ''
+        while True:
+            _, token, n = self.getNextToken(n=n, changeState=False)
+            if token.cat != tokencat:
+                return True, res, n-1
+            res += token.text
+    
+    def stackUntilLevelByCat(self,
+                        inc='groupstart', dec='groupend',
+                        endLevel=0, startLevel=1, n=-1):
+        if n < 0:
+            n = self.n
+        res = ''
+        level = startLevel
+        while True:
+            shouldContinue, token, n = self.getNextToken(n=n, changeState=False)
+            if not shouldContinue:
+                if level == endLevel:
+                    return True, res, n
+                else:
+                    return False, None, n
+            if token.cat == inc:
+                level += 1
+            if token.cat == dec:
+                level -= 1
+            if level != endLevel:
+                res += token.text
+            else:
+                return True, res, n
+
+    def stackUntilText(self, stopText, n=-1):
+        """Stack text until text."""
+        if n < 0:
+            n = self.n
+        res = ''
+        tl = len(stopText)
+        maxl = len(self.text)
+        while True:
+            if n+tl >= maxl:
+                return False, res, maxl
+            ntext = self.text[n:n+tl]
+            if ntext == stopText:
+                return True, res, n+tl
+            res += self.text[n]
+            n += 1
 
 
 if __name__ == '__main__':
+    file = open('core.tlpp', 'r')
+    text = file.read()
+    print(text)
+    print('=============')
+    coremodel = SCRIPT = __import__('TLPPcore')
+    scripts = {'core': coremodel}
+    processer = Processor(text, scripts=scripts, verbose=0)
+    processer.process()
+    print('++++++++++++')
+    print(processer.result)
+    # for t in processer.tokenList:
+    #     print(t)
+    exit(0)
     file = open('./test.txt', 'r')
     test = file.read()
     file.close()
@@ -558,9 +567,9 @@ if __name__ == '__main__':
     print('++++ end input ++++')
     test += chr(0)
     processer = Processor(test, verbose=1)
-    isexpand = processer.scan()
+    isexpand = processer.process()
     print('isexpand =', isexpand)
-    tokendisp = [str(t) for t in processer.tokens]
+    tokendisp = [str(t) for t in processer.tokenList]
     print('++++ result tokens ++++')
     for d in tokendisp:
         print(d)

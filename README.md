@@ -1,5 +1,9 @@
 # Tex-like Preprocessor (TLPP)
 TLPP is a code preprocessor with tex-like syntax and implemented in pure python. It can be used as a preprocessor of the code or as a macro-language like *Gnu M4*. Note, TLPP is **not** a programming language . Its development is not finished yet.
+
+## Why I made this
+The goal of this project is to make a literature programming system like WEB. This is for people, who want to share the ideal not only the code. For example, an open-source object shares the code. But only a very few people can get the ideals by reading the code. With this preprocessor, the code can look more like a natur-language. In fact you can add a suit of macro definition to generate .tex file and compile it to pdf file!
+
 ## Requirement
 Pyhton 3.x (tested for 3.8)
 **No** other packages!
@@ -18,17 +22,17 @@ print(processor.result)
 ```
 The ```canexpandmore``` variable should be false. It means no more macro can be expanded.
 ## Basic Syntax
-A macro of TLPP is called by ```\```, to call a macro named ```some``` you should use
-```\some```
-if ```\some``` macro has two arguments, use
+A macro of TLPP is called by ```\```, to call a macro named ```foo``` you should use
+```\foo```
+if ```\foo``` macro has two arguments, use
 ```\some arg1 arg2```
-The ```arg1``` and ```arg2``` can only be single character and not space ```' '```. The white space between two arguments are not necessory, they will be ignored. For example
+The ```arg1``` and ```arg2``` can only be single character and not space ```' '```. The white space between two arguments will be ignored. For example
 ```
-\someab
+\some a b
 ```
-is valid, if you don't have a macro named ```someab```. The macro gets ```a``` as first argument and ```b``` as second argument. But it is recomand to put white spaces, for readability. If you want to use a set of characters as argument, you should give a ```group``` as argument. A ```group``` is enclosed by ```{}```. For our example:
+The macro gets ```a``` as first argument and ```b``` as second argument. If you want to use a set of characters as argument, you should give a ```group``` as argument. A ```group``` is enclosed by ```{}```. For our example:
 ```
-\some{arg1}{arg2}
+\foo{arg1}{arg2}
 ```
 the macro gets ```arg1``` and ```arg2``` as arguments.
 
@@ -37,105 +41,35 @@ get``` takes one argument befor the calling and one after, use
 ```
 {arg1}\get{arg2}
 ```
-, again if ```arg1``` or ```arg2``` is single charactor (and not space), it is not necessory to use group.
+, again if ```arg1``` or ```arg2``` is single charactor (and not space), it is not necessory to use group. In this project we call the arguments which will be placed before the macro calling as **negative arguments** and after the macro calling as **positive arguments**.
+## Process
+The processor will scan the text to a list of ```Token``` object. Tokens have different catalogues, low level catalogues are
+- ```letter``` includes ```[A-Za-z]``` and ```@```.
+- ```leader``` includes ```\```.
+- ```groupstart``` includes ```{```.
+- ```groupend``` includes ```}```.
+- ```textend``` includes ```\0``` the end character of a string as in C.
+- ```space``` includes white space ```' '``` and tab ```\t```.
+- ```nl``` includes ```\n``` and ```\r```.
+- ```others``` includes all other characters.
+And high level catagoures are
+- ```macroname```: A macro call like ```\foo``` will be recognized as a single token. Note, the text storaged in the ```Token``` oblect will not include the backslash ```\```.
+- ```group```: As before, text enclosed in ```{...}``` will be storaged as a single token.
+- ```hash```: The processor will take this as a single token, but not expand it. At the end it will be replaced by the value storaged in the hash table. This is used to make an escape enviroment.
+
+The processor will first "see" the ```leader``` then start to find the macro. For arguments, tokens will catalogues ````space, nl, textend``` and ```leader``` will not be considered.
+
 ## built-in macros
-### ```\newMacro{name}{body}```
-Define a new macro. ```name``` can start with ```\``` or not. But to call this new macro, you must use ```\```. Follow characters can not be used for a macro name
- - ```' '```(white space).
- - ```'\'```. You can put it at the begin, if you like. But it can not be a part of the macro name.
- - ```'{'``` and ```'}'```.
- - ```'\n'```(new line character).
+All built-in macros are start with ```@```. Which means they are fixed, more see below.
+### ```\@newMacro{name}{body}```
+Define a new macro, with name ```name``` and replace text ```body```. 
+The ```name``` can only use characters with catalogue ```letter```. So it can only be letters or ```@```. If at least one ```@``` in the macro name, this macro is fixed. You can not delete it or change the defination. 
+### ```\@callpy{func}arg\@endcallpy```
+This will call the function ```func``` in your script and gives ```arg``` as the argument. When use command line, you can load your script via ```-s``` option. When you want use it in your programm, load the script as a ```module``` oject and put it in a ```dict```. You can put more than one module into the dict, and pass it into the ```scripts``` argument, when create the processor instance.
 
-When you want to use arguments, use```#```+number in ```body```. For example if we want to defnine macro ```\add``` with two arguments then use
-```\newMacro{add}{#1 + #2}```
-the processor will detect how many arguments there are (numbers must be in order so ```\newMacro{add}{#1 + #5}``` will not work, processor will assum there are only one argument). For arguments which need to put before the macro calling, use ```#-1, #-2```..., for example
-```
-\newMacro{add}{(#-1) + (#1)}
-{a*b}\add{c*d}
-```
-The second line will expand to ```(a*b) + (c*d)```. The placeholder ```#0``` is for the macro name it self, without backslash. For example
-```
-\newMacro{operater}{#-1 #0 #1}
-a \operator b
-```
-The second line will expand as ```a operator b```
-### ```\renewMacro{name}{new_body}```
-Like ```\newMacro```, used for overwrite the existed user macro. All built-in macros and blocked macros can not be overwritten.
-### ```\newLineCharOff```
-Ignore the new line charactor ```\n``` in the input document. By default it will not be ignored.
-### ```\nl```
-Add a new line character ```\n```. It can be used to make a line break, after ```\newLineCharOff```.
-### ```\newLineCharOn```
-The line break in the input document will be considered after this macro.
-### ```\dnl```
-If the next character direct after (without any white space) ```\dnl``` is the new line character ```'\n'```, the macro will delete it. If it is other charactor, it will do nothing and will be expand to empty string.
+The function should take only one string argument. It can also take two, first one is the processor instance, second one is ```arg```. Thus you can interact with the processor. If you want to call this function, add ```@``` at the begin of the function name, like ```\@callpy{@func}arg\@endcallpy``` The return value should be a string or a tuple (also ```None```). If the return value is a string, it will become the expanding result. If it is ```None```, is same as return an empty string. If you return a tuple, the first element should have type ```int```, this is the key in the hash table. 2nd element should be a ```str``` or ```None```. If it is a string, it will be the value under the first key in hash table, if the key already exist, the value will changed to it. If it is ```None```, then it will not change the value, but if the key is new, the processor will create a new iterm with the key. The last element should be ```bool```. ```True``` if you want to put the text here (it will not change anymore, even later you changed the value in the hash table), ```False``` if you want to put a tag here, and at the end it will replaced by the value in the hash table.
+### ```@hash{hashcode}```
+As before, it will be used as a tag. It will not be expanded until the end. Then replaced by the value in the hash table. This macro will be storaged as a 
+```hash``` Token. ```hashcode``` should be the key in hash table i.e. integer. You really should not use it directly by hand.
 
-**Note:** for macro expanding, the line break will be considered by the currend situation.
-
-### ```\include{file}```
-Copy and pass the content of another file, which located at ```file``` to the position. Used for splite a big project into multi-file.
-### ```\input{file}```
-It works like ```\include{file}```. But it will first processes contents of ```file``` then put the result in the position. ```file``` will be expanded in a sparated processor. So all macro definitions inside ```file``` will not valid in the parent file and all macro definitions in the parent file, will not valid in ```file```. It can be used for a large project, which conflict of macro names becomes a big issue.
-
-***Note***: If you use ```TLPP.py``` from command line, you can use ```--load``` or ```-l``` option to load a file. This file will add no content to the output file, but all macro definitions will be hold and valid globally, even for ```\input```.
-### ```\quote text \endquote```
-As an 'escape' enviroment. All contents in ```text``` will directly output to the result even there are macros inside. Note: ```\quote #1 \endquote``` inside a macro definition will not work like a normal quotation. ```#1``` will be still replaced by the actual arguments. But it will not expand further. For example
-```
-\newMacro{add}{#1 + \quote#2\endquote}
-\newMacro{\bar}{a}
-\newMacro{\foo}{b}
-\add{\bar}{\foo}
-```
-The last line will first expand to ```\bar + \quote\foo\endquote``` then ```\bar``` will expand as a normal macro, but ```\quote\foo\endquote``` will be a quotation, so at the end you will have ```a + \foo``` as final result. The quotation enviroment can be used as a argument like group, for example
-```
-\newMacro{add}{#-1 + #1}
-\newMacro{\bar}{a}
-\newMacro{\foo}{b}
-\quote\bar\endquote\add\foo
-```
-The last line will expand to
-```
-\bar + b
-```
-
-The first ```\endquote``` after ```\quote``` will be used. For example
-```
-\quote\quote\endquote
-\quote\endquote\endquote
-```
-The first line works, it gives you ```\quote``` as the final result. But for the second line, at the first ```\endquote``` the quotation enviroment is already closed, so the second ```\endquote``` leads to an error. If you really want to output ```\endquote```, you can use
-```
-\newMacro{macroname}{\quote\\endquote#1}
-\macroname{endquote}
-```
-
-Currently, if you wrapppe the quotation enviroment to a single macro, like
-```
-\newMacro{quota}{\quote#1\endquote}
-```
-it works, but if you want to use it like
-```
-\quota{{}
-```
-It leads to an error, because the second ```{``` is still the symbol for start a group for the processor due to ```\quota``` is just a normal macro, not an quotation enviroment!
-
-In summary, I recomand to only use ```\quote...\endquote``` to add ```\```, ```{``` and ```}``` in the output.
-### ```\ignore text \endignore```
-Ignore the content in ```text```. Used for comment. It has same issue as in ```\quote..\endquote```.
-
-### ```\callpy{functionname}\pyarg text \endpyarg```
-When you use ```TLPP.py``` in command line, you can use ```--script``` or ```-s``` option to load a python script. All functions in the script can be called via this macro. All functions can only take one argument with type of string, which will be given as ```text``` between ```\pyarg``` and ```\endpyarg```. The return value of the function can be a string, in this case the string is the replace text of this statement. Or it can be a tuple ```(int, str, Bool)```. The first element is a hash code. It will result add to a hash table and the second value is the value under this hash code. The 3rd element is if you want to put the text here(```True```), or you just want this function to change the value in the hash table(```False```). With this you can change your text according to macros which called after. If you do this way, the replace text behaviers like texts in quotation enviroment. 
-**Note**: The return value can be an empty string, but can not be ```None```. The script valid for all files in your project.
-
-For the processor, the script will be loaded as a ```module``` object.
-
-## blocked macros
-Blocked macros can not be called by user. Also you can not redefine them. They will help the processing. Currently only ```\quotation{hashCode}``` is a blocked macro. It helps the processor to deal with quotation in recursive expanding. The content between ```\quote...\endquote``` will be put in to a hash table, and expand first as ```\quotation{hashCode}```. At the end this macro calling will be replaced by the value of ```hasCode``` in the hash table.
-
-## TODO
-- add support for single line comment
-- add support for enviroment, like in latex
-- add support for processor variable and operation of it. (Done by ```\callpy```. But still need when I want rewrite the processor in other language.)
-- add more debug message
-- make a position map between output text and input text
-- more.....
+I want to keep a minimal number of built-in macros, with ```\@callpy``` you can really define what kind of macros you like.

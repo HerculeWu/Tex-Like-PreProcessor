@@ -33,23 +33,23 @@ ofilename = args.output
 lfilename = args.load
 script = args.script
 verbose = args.verbose
-SCRIPT = None
+SCRIPT = {}
 if script is not None:
     if script[-3:] == '.py':
         script = script[:-3]
-    SCRIPT = __import__(script)
+    SCRIPT['user'] = __import__(script)
 if lfilename is not None:
     lfile = open(lfilename, 'r')
     configs = lfile.read()
     lfile.close()
-    loadProcessor = Processor(configs, verbose=verbose, script=SCRIPT)
-    _ = loadProcessor.scan()
+    loadProcessor = Processor(configs, verbose=verbose, scripts=SCRIPT)
+    _ = loadProcessor.process()
     Processor.globalMacros = {k: v for k, v in loadProcessor.macros.items()}
 ifile = open(ifilename, 'r')
 itext = ifile.read()
 ifile.close()
-processor = Processor(itext, verbose=verbose, script=SCRIPT)
-_ = processor.scan()
+processor = Processor(itext, verbose=verbose, scripts=SCRIPT)
+_ = processor.process()
 ofile = open(ofilename, 'w+')
 ofile.write(processor.result)
 ofile.close()
